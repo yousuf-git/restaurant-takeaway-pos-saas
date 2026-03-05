@@ -4,10 +4,18 @@ import { useAuthStore } from '@/stores/authStore';
 import { Minus, Plus, Trash2, X, Printer, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Receipt, printReceiptWithQzTray } from './Receipt';
+import { Receipt, printReceiptWithQzTray, PRINT_MODE } from './Receipt';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { DineInTable, Waiter, OrderType } from '@/types/database';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface BillPanelProps {
   focused?: boolean;
@@ -26,21 +34,45 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
   const clear = useBillStore((s) => s.clear);
   const total = useBillStore((s) => s.total);
   const setLastOrder = useBillStore((s) => s.setLastOrder);
+  const orderType = useBillStore((s) => s.orderType);
+  const setOrderType = useBillStore((s) => s.setOrderType);
+  const tableId = useBillStore((s) => s.tableId);
+  const setTableId = useBillStore((s) => s.setTableId);
+  const waiterId = useBillStore((s) => s.waiterId);
+  const setWaiterId = useBillStore((s) => s.setWaiterId);
   const user = useAuthStore((s) => s.user);
 
   const [confirming, setConfirming] = useState(false);
-  // const [showReceipt, setShowReceipt] = useState(false); // Old browser-print approach
   const [printData, setPrintData] = useState<{
     orderNumber: number;
     items: typeof items;
     total: number;
     note: string;
     dateTime: Date;
+    orderType: OrderType;
+    tableNumber?: string;
+    waiterName?: string;
   } | null>(null);
-  // const receiptRef = useRef<HTMLDivElement>(null); // Old browser-print approach
   const billItemsRef = useRef<HTMLDivElement>(null);
 
+  const [tables, setTables] = useState<DineInTable[]>([]);
+  const [waiters, setWaiters] = useState<Waiter[]>([]);
+
   const totalAmount = total();
+
+  // Fetch tables and waiters for the restaurant
+  useEffect(() => {
+    if (!user?.restaurant_id) return;
+    const fetchDineInData = async () => {
+      const [tablesRes, waitersRes] = await Promise.all([
+        supabase.from('tables').select('*').eq('restaurant_id', user.restaurant_id!).order('table_number'),
+        supabase.from('waiters').select('*').eq('restaurant_id', user.restaurant_id!).order('fullname'),
+      ]);
+      setTables((tablesRes.data as DineInTable[]) || []);
+      setWaiters((waitersRes.data as Waiter[]) || []);
+    };
+    fetchDineInData();
+  }, [user?.restaurant_id]);
 
   // Scroll focused bill item into view
   useEffect(() => {
@@ -50,36 +82,40 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
     }
   }, [focused, focusedBillIndex]);
 
-  // ── Old browser-print approach ──
-  // const triggerPrint = useCallback(() => {
-  //   setShowReceipt(true);
-  //   setTimeout(() => {
-  //     window.print();
-  //     // Hide receipt after printing
-  //     setTimeout(() => setShowReceipt(false), 500);
-  //   }, 100);
-  // }, []);
+  // ── Printing ──
+  const receiptRef = useRef<HTMLDivElement>(null);
 
-  // ── New QZ-Tray thermal printing ──
   const triggerPrint = useCallback(async (orderData: {
     orderNumber: number;
     items: typeof items;
     total: number;
     note: string;
     dateTime: Date;
+    orderType: OrderType;
+    tableNumber?: string;
+    waiterName?: string;
   }) => {
-    try {
-      await printReceiptWithQzTray({
-        restaurant,
-        orderNumber: orderData.orderNumber,
-        items: orderData.items,
-        total: orderData.total,
-        note: orderData.note,
-        dateTime: orderData.dateTime,
-      });
-    } catch (err) {
-      console.error('QZ-Tray print error:', err);
-      toast.error('Failed to print receipt. Is QZ Tray running?');
+    if (PRINT_MODE === 'browser') {
+      // Browser PDF print — Receipt component renders via printData state,
+      // then we call window.print() after a short delay to let it render.
+      setTimeout(() => window.print(), 300);
+    } else {
+      try {
+        await printReceiptWithQzTray({
+          restaurant,
+          orderNumber: orderData.orderNumber,
+          items: orderData.items,
+          total: orderData.total,
+          note: orderData.note,
+          dateTime: orderData.dateTime,
+          orderType: orderData.orderType,
+          tableNumber: orderData.tableNumber,
+          waiterName: orderData.waiterName,
+        });
+      } catch (err) {
+        console.error('QZ-Tray print error:', err);
+        toast.error('Failed to print receipt. Is QZ Tray running?');
+      }
     }
   }, [restaurant]);
 
@@ -87,6 +123,17 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
     if (!user?.restaurant_id || !user?.id) {
       toast.error('User session error. Please re-login.');
       return;
+    }
+
+    if (orderType === 'dine_in') {
+      if (!tableId) {
+        toast.error('Please select a table for dine-in order');
+        return;
+      }
+      if (!waiterId) {
+        toast.error('Please select a waiter for dine-in order');
+        return;
+      }
     }
 
     setConfirming(true);
@@ -142,6 +189,24 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
       console.error(itemsError);
     }
 
+    // Insert dine_in record if applicable
+    let selectedTableNumber: string | undefined;
+    let selectedWaiterName: string | undefined;
+    if (orderType === 'dine_in' && tableId && waiterId) {
+      selectedTableNumber = tables.find(t => t.id === tableId)?.table_number;
+      selectedWaiterName = waiters.find(w => w.id === waiterId)?.fullname;
+
+      const { error: dineInError } = await supabase.from('dine_ins').insert({
+        order_id: (order as any).id,
+        table_id: tableId,
+        waiter_id: waiterId,
+      });
+      if (dineInError) {
+        toast.error('Order saved but dine-in info failed');
+        console.error(dineInError);
+      }
+    }
+
     const now = new Date();
     const orderData = {
       orderNumber: orderNum,
@@ -149,6 +214,9 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
       total: totalAmount,
       note: note,
       dateTime: now,
+      orderType,
+      tableNumber: selectedTableNumber,
+      waiterName: selectedWaiterName,
     };
 
     // Set print data and trigger print
@@ -197,6 +265,67 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
           <p className="text-xs text-bill-muted">Last order: <span className="text-bill-accent font-mono">#{lastOrderNumber}</span></p>
         </div>
       )}
+
+      {/* Order Type Toggle */}
+      <div className="px-4 py-3 border-b border-bill-border space-y-2">
+        <div className="flex gap-1">
+          <button
+            onClick={() => setOrderType('take_away')}
+            className={cn(
+              'flex-1 text-xs font-medium py-1.5 rounded-md transition-colors',
+              orderType === 'take_away'
+                ? 'bg-bill-accent text-primary-foreground'
+                : 'bg-bill-border/50 text-bill-muted hover:text-bill-foreground'
+            )}
+            tabIndex={-1}
+          >
+            Take Away
+          </button>
+          <button
+            onClick={() => setOrderType('dine_in')}
+            className={cn(
+              'flex-1 text-xs font-medium py-1.5 rounded-md transition-colors',
+              orderType === 'dine_in'
+                ? 'bg-bill-accent text-primary-foreground'
+                : 'bg-bill-border/50 text-bill-muted hover:text-bill-foreground'
+            )}
+            tabIndex={-1}
+          >
+            Dining
+          </button>
+        </div>
+
+        {orderType === 'dine_in' && (
+          <div className="space-y-2">
+            <Select
+              value={tableId ? String(tableId) : ''}
+              onValueChange={(v) => setTableId(Number(v))}
+            >
+              <SelectTrigger className="h-8 text-xs bg-bill-border/50 border-bill-border text-bill-foreground">
+                <SelectValue placeholder="Select table" />
+              </SelectTrigger>
+              <SelectContent>
+                {tables.map((t) => (
+                  <SelectItem key={t.id} value={String(t.id)}>{t.table_number}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={waiterId ? String(waiterId) : ''}
+              onValueChange={(v) => setWaiterId(Number(v))}
+            >
+              <SelectTrigger className="h-8 text-xs bg-bill-border/50 border-bill-border text-bill-foreground">
+                <SelectValue placeholder="Select waiter" />
+              </SelectTrigger>
+              <SelectContent>
+                {waiters.map((w) => (
+                  <SelectItem key={w.id} value={String(w.id)}>{w.fullname}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+      </div>
 
       {/* Items */}
       <div className="flex-1 overflow-auto px-4 py-3 space-y-2" ref={billItemsRef}>
@@ -297,20 +426,23 @@ export function BillPanel({ focused, focusedBillIndex }: BillPanelProps) {
           </Button>
         </div>
       </div>
-
-      {/* ── Old browser-print approach ──
-      {showReceipt && receiptData && (
-        <Receipt
-          ref={receiptRef}
-          restaurant={restaurant}
-          orderNumber={receiptData.orderNumber}
-          items={receiptData.items}
-          total={receiptData.total}
-          note={receiptData.note}
-          dateTime={receiptData.dateTime}
-        />
+      {/* Hidden receipt for browser print — hidden on screen, visible only in @media print */}
+      {PRINT_MODE === 'browser' && receiptData && (
+        <div className="print-receipt-wrapper">
+          <Receipt
+            ref={receiptRef}
+            restaurant={restaurant}
+            orderNumber={receiptData.orderNumber}
+            items={receiptData.items}
+            total={receiptData.total}
+            note={receiptData.note}
+            dateTime={receiptData.dateTime}
+            orderType={receiptData.orderType}
+            tableNumber={receiptData.tableNumber}
+            waiterName={receiptData.waiterName}
+          />
+        </div>
       )}
-      */}
     </div>
   );
 }

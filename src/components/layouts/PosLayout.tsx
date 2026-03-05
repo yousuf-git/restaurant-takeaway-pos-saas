@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { useBillStore } from '@/stores/billStore';
-import { ClipboardList, LogOut, ShoppingBag, BarChart3, UtensilsCrossed, History } from 'lucide-react';
+import { ClipboardList, LogOut, ShoppingBag, BarChart3, UtensilsCrossed, History, Armchair, UserCheck, PieChart } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -9,7 +9,10 @@ const posLinks = [
   { to: '/pos/orders', label: 'Orders', icon: ShoppingBag },
   { to: '/pos/menu', label: 'Menu', icon: ClipboardList },
   { to: '/pos/order-history', label: 'Order History', icon: History },
+  { to: '/pos/item-stats', label: 'Item Stats', icon: PieChart },
   { to: '/pos/summary', label: 'Summary', icon: BarChart3 },
+  { to: '/pos/tables', label: 'Tables', icon: Armchair },
+  { to: '/pos/waiters', label: 'Waiters', icon: UserCheck },
 ];
 
 export function PosLayout({ children }: { children: React.ReactNode }) {

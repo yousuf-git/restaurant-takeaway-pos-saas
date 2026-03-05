@@ -80,3 +80,28 @@ export interface BillItem {
 export interface ItemWithVariants extends Item {
   variants: ItemVariant[];
 }
+
+export type OrderType = 'take_away' | 'dine_in';
+
+export interface DineInTable {
+  id: number;
+  restaurant_id: number;
+  table_number: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Waiter {
+  id: number;
+  restaurant_id: number;
+  fullname: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DineIn {
+  id: number;
+  order_id: number;
+  table_id: number;
+  waiter_id: number;
+}

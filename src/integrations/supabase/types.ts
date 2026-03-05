@@ -9,6 +9,113 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      tables: {
+        Row: {
+          id: number
+          restaurant_id: number
+          table_number: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          restaurant_id: number
+          table_number: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          restaurant_id?: number
+          table_number?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tables_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      waiters: {
+        Row: {
+          id: number
+          restaurant_id: number
+          fullname: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: never
+          restaurant_id: number
+          fullname: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: never
+          restaurant_id?: number
+          fullname?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waiters_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dine_ins: {
+        Row: {
+          id: number
+          order_id: number
+          table_id: number
+          waiter_id: number
+        }
+        Insert: {
+          id?: never
+          order_id: number
+          table_id: number
+          waiter_id: number
+        }
+        Update: {
+          id?: never
+          order_id?: number
+          table_id?: number
+          waiter_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dine_ins_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: true
+            referencedRelation: "orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dine_ins_table_id_fkey"
+            columns: ["table_id"]
+            isOneToOne: false
+            referencedRelation: "tables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dine_ins_waiter_id_fkey"
+            columns: ["waiter_id"]
+            isOneToOne: false
+            referencedRelation: "waiters"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurants: {
         Row: {
           id: number

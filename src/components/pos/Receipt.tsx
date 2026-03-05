@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { BillItem, Restaurant } from '@/types/database';
+import { BillItem, Restaurant, OrderType } from '@/types/database';
 
 interface ReceiptProps {
   restaurant: Restaurant | null;
@@ -8,10 +8,13 @@ interface ReceiptProps {
   total: number;
   note?: string;
   dateTime: Date;
+  orderType?: OrderType;
+  tableNumber?: string;
+  waiterName?: string;
 }
 
 export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(
-  ({ restaurant, orderNumber, items, total, note, dateTime }, ref) => {
+  ({ restaurant, orderNumber, items, total, note, dateTime, orderType, tableNumber, waiterName }, ref) => {
     return (
       <div ref={ref} className="receipt-print">
         <div style={{ width: '80mm', fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', padding: '4mm' }}>
@@ -63,6 +66,19 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(
           <div style={{ fontSize: '10px', marginBottom: '4px', textAlign: 'right' }}>
             {dateTime.toLocaleTimeString()}
           </div>
+
+          {/* Order Type + Dine-in info */}
+          {orderType === 'dine_in' && tableNumber && (
+            <div style={{ fontSize: '10px', marginBottom: '4px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span><strong>Type:</strong> Dine-In</span>
+                <span><strong>Table:</strong> {tableNumber}</span>
+              </div>
+              {waiterName && (
+                <div><strong>Waiter:</strong> {waiterName}</div>
+              )}
+            </div>
+          )}
 
           {/* Separator */}
           <div style={{ borderTop: '1px dashed #000', margin: '6px 0' }} />
@@ -163,6 +179,9 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(
 
 Receipt.displayName = 'Receipt';
 
+// ─── Print mode from env ─────────────────────────────────────────────
+export const PRINT_MODE: 'thermal' | 'browser' = (import.meta.env.VITE_PRINT_MODE === 'browser') ? 'browser' : 'thermal';
+
 // ─── QZ-Tray Thermal Printing (ESC/POS) ──────────────────────────────
 import qz from "qz-tray";
 
@@ -214,27 +233,16 @@ function toBase64(raw: string): string {
 /**
  * Build ESC/POS raw commands from receipt data and send to a thermal printer
  * via QZ Tray.  Requires the QZ Tray desktop app to be running.
- *
- * All text + ESC/POS commands are encoded as base64 and sent in a single
- * `qz.print()` call. This ensures exact byte delivery with no encoding
- * issues, no buffer overflow, and no artificial delays.
- *
- * @param props   Same data the visual <Receipt /> component uses.
- * @param printerName  Printer search string passed to `qz.printers.find()`.
  */
 export async function printReceiptWithQzTray(
   props: ReceiptProps,
   printerName = "thermal"
 ) {
-  const { restaurant, orderNumber, items, total, note, dateTime } = props;
+  const { restaurant, orderNumber, items, total, note, dateTime, orderType, tableNumber, waiterName } = props;
 
-  // Single array for one qz.print() call — no delays needed.
-  // Logo image is a separate element (QZ processes it specially),
-  // everything else is one base64-encoded binary blob.
   const printData: unknown[] = [];
 
   // ── Logo (if available) ────────────────────────────────────────────
-  // Init + center must be sent before the image element
   printData.push({
     type: "raw",
     format: "base64",
@@ -277,6 +285,15 @@ export async function printReceiptWithQzTray(
 
   raw += leftRight(`Order #${orderNumber}`, dateTime.toLocaleDateString()) + "\n";
   raw += leftRight("", dateTime.toLocaleTimeString()) + "\n";
+
+  // Dine-in info
+  if (orderType === 'dine_in' && tableNumber) {
+    raw += leftRight("Type: Dine-In", `Table: ${tableNumber}`) + "\n";
+    if (waiterName) {
+      raw += `Waiter: ${waiterName}\n`;
+    }
+  }
+
   raw += dashedLine() + "\n";
 
   // Column widths: Item(26) Qty(5) Price(8) Total(9) = 48

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, TrendingUp, ShoppingBag, DollarSign, Calendar, ArrowRight } from 'lucide-react';
+import { Loader2, TrendingUp, ShoppingBag, DollarSign, ArrowRight, UtensilsCrossed } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuthStore } from '@/stores/authStore';
 import { supabase } from '@/integrations/supabase/client';
@@ -13,6 +13,7 @@ const PosSummary = () => {
   const [todayOrders, setTodayOrders] = useState<(Order & { order_items?: OrderItem[] })[]>([]);
   const [weekOrders, setWeekOrders] = useState<Order[]>([]);
   const [monthOrders, setMonthOrders] = useState<Order[]>([]);
+  const [dineInOrderIds, setDineInOrderIds] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (!user?.restaurant_id) return;
@@ -49,9 +50,21 @@ const PosSummary = () => {
           .eq('status', 'confirmed'),
       ]);
 
-      setTodayOrders((todayRes.data as any[]) || []);
+      const allTodayOrders = (todayRes.data as any[]) || [];
+      setTodayOrders(allTodayOrders);
       setWeekOrders((weekRes.data as Order[]) || []);
       setMonthOrders((monthRes.data as Order[]) || []);
+
+      // Fetch dine-in status for today's orders
+      if (allTodayOrders.length > 0) {
+        const orderIds = allTodayOrders.map((o: any) => o.id);
+        const { data: dineIns } = await supabase
+          .from('dine_ins')
+          .select('order_id')
+          .in('order_id', orderIds);
+        setDineInOrderIds(new Set((dineIns || []).map((d: any) => d.order_id)));
+      }
+
       setLoading(false);
     };
     fetchSummary();
@@ -69,6 +82,12 @@ const PosSummary = () => {
   const todayAvg = todayOrderCount > 0 ? Math.round(todayRevenue / todayOrderCount) : 0;
   const weekAvg = weekOrderCount > 0 ? Math.round(weekRevenue / weekOrderCount) : 0;
   const monthAvg = monthOrderCount > 0 ? Math.round(monthRevenue / monthOrderCount) : 0;
+
+  // Dine-in vs Take Away breakdown (today)
+  const todayDineIn = confirmedToday.filter((o) => dineInOrderIds.has(o.id));
+  const todayTakeAway = confirmedToday.filter((o) => !dineInOrderIds.has(o.id));
+  const dineInRevenue = todayDineIn.reduce((sum, o) => sum + Number(o.total_amount), 0);
+  const takeAwayRevenue = todayTakeAway.reduce((sum, o) => sum + Number(o.total_amount), 0);
 
   // Top selling items today
   const itemCounts: Record<string, { name: string; qty: number; revenue: number }> = {};
@@ -136,6 +155,26 @@ const PosSummary = () => {
             </div>
           </div>
 
+          {/* Dine-In vs Take Away Breakdown (Today) */}
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b bg-muted/30 flex items-center gap-2">
+              <UtensilsCrossed className="w-4 h-4 text-orange-600" />
+              <h2 className="font-semibold text-sm">Order Type Breakdown (Today)</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x">
+              <div className="px-5 py-4">
+                <p className="text-xs text-muted-foreground mb-1">Take Away</p>
+                <p className="text-2xl font-bold">{todayTakeAway.length} <span className="text-sm font-normal text-muted-foreground">orders</span></p>
+                <p className="text-sm text-muted-foreground mt-1">Rs {takeAwayRevenue.toLocaleString()}</p>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-xs text-muted-foreground mb-1">Dine-In</p>
+                <p className="text-2xl font-bold">{todayDineIn.length} <span className="text-sm font-normal text-muted-foreground">orders</span></p>
+                <p className="text-sm text-muted-foreground mt-1">Rs {dineInRevenue.toLocaleString()}</p>
+              </div>
+            </div>
+          </div>
+
           {/* Bottom sections */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Top Selling Items */}
@@ -198,6 +237,11 @@ const PosSummary = () => {
                           }`}>
                             {order.status}
                           </span>
+                          {dineInOrderIds.has(order.id) && (
+                            <span className="text-xs px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 font-medium">
+                              Dine-In
+                            </span>
+                          )}
                         </div>
                         <span className="text-sm font-semibold font-mono">Rs {Number(order.total_amount).toLocaleString()}</span>
                       </div>

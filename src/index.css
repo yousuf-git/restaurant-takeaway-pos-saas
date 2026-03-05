@@ -116,7 +116,12 @@
   }
 }
 
-/* Print styles for thermal receipt */
+/* Hide receipt wrapper on screen */
+.print-receipt-wrapper {
+  display: none;
+}
+
+/* Print styles for receipt */
 @media print {
   @page {
     margin: 0;
@@ -125,9 +130,12 @@
   body * {
     visibility: hidden;
   }
+  .print-receipt-wrapper {
+    display: block !important;
+  }
   .receipt-print,
   .receipt-print * {
-    visibility: visible;
+    visibility: visible !important;
   }
   .receipt-print {
     position: absolute;
