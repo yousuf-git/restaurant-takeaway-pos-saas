@@ -22,6 +22,7 @@ import PosItemStats from "./pages/pos/PosItemStats";
 import PosTables from "./pages/pos/PosTables";
 import PosWaiters from "./pages/pos/PosWaiters";
 import NotFound from "./pages/NotFound";
+import LandingPage from "./pages/LandingPage";
 
 const queryClient = new QueryClient();
 
@@ -33,7 +34,7 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
         <Routes>
-          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
 
           {/* Admin routes */}
